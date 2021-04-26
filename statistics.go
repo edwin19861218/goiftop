@@ -1,7 +1,8 @@
 package main
 
 import (
-	"github.com/fs714/goiftop/utils/queue"
+	"github.com/edwin19861218/goiftop/utils/log"
+	"github.com/edwin19861218/goiftop/utils/queue"
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/layers"
 	"sync"
@@ -25,8 +26,14 @@ type FlowSnapshot struct {
 	DownStreamRate60   int64
 }
 
-var L3FlowSnapshots = make([]*FlowSnapshot, 0, 0)
-var L4FlowSnapshots = make([]*FlowSnapshot, 0, 0)
+type FlowSnapshotCache struct {
+	L3FlowSnapshots []*FlowSnapshot
+	L4FlowSnapshots []*FlowSnapshot
+}
+
+func NewCache() *FlowSnapshotCache {
+	return &FlowSnapshotCache{L3FlowSnapshots: make([]*FlowSnapshot, 0, 0), L4FlowSnapshots: make([]*FlowSnapshot, 0, 0)}
+}
 
 type Flow struct {
 	Protocol         string
@@ -209,7 +216,6 @@ func (s *Statistics) PacketHandler(ifaceName string, pkg gopacket.Packet) {
 	var srcAddr, dstAddr string
 	var srcPort, dstPort string
 	var l3Len, l4Len int
-
 	for _, ly := range pkg.Layers() {
 		switch ly.LayerType() {
 		case layers.LayerTypeIPv4:
@@ -218,22 +224,45 @@ func (s *Statistics) PacketHandler(ifaceName string, pkg gopacket.Packet) {
 			srcAddr = l.SrcIP.String()
 			dstAddr = l.DstIP.String()
 			l3Len = len(l.LayerPayload())
+			continue
+		case layers.LayerTypeIPv6:
+			l := ly.(*layers.IPv6)
+			l3Type = "ipv6"
+			srcAddr = l.SrcIP.String()
+			dstAddr = l.DstIP.String()
+			l3Len = len(l.LayerPayload())
+			continue
 		case layers.LayerTypeTCP:
 			l := ly.(*layers.TCP)
 			l4Protocol = "tcp"
 			srcPort = l.SrcPort.String()
 			dstPort = l.DstPort.String()
 			l4Len = len(l.LayerPayload())
+			continue
 		case layers.LayerTypeUDP:
 			l := ly.(*layers.UDP)
 			l4Protocol = "udp"
 			srcPort = l.SrcPort.String()
 			dstPort = l.DstPort.String()
 			l4Len = len(l.LayerPayload())
+			continue
 		case layers.LayerTypeICMPv4:
 			l := ly.(*layers.ICMPv4)
 			l4Protocol = "icmp"
 			l4Len = len(l.LayerPayload())
+			continue
+		case layers.LayerTypeICMPv6:
+			l := ly.(*layers.ICMPv6)
+			l4Protocol = "icmp"
+			l4Len = len(l.LayerPayload())
+			continue
+		case layers.LayerTypeEthernet:
+			continue
+		default:
+			if int(ly.LayerType()) == 2 {
+				continue
+			}
+			log.Debugf("unknown layer %s", ly.LayerType().String())
 		}
 	}
 
